@@ -1,0 +1,10 @@
+aiogram==3.0.0b7
+fastapi
+uvicorn[standard]
+SQLModel
+asyncpg
+httpx
+python-dotenv
+openai
+aioredis
+apscheduler
