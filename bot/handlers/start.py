@@ -5,10 +5,13 @@ from aiogram.fsm.state import State, StatesGroup
 from sqlmodel import select, Session
 from bot.models.user import User
 from bot.db import engine
+from datetime import datetime
 import asyncio
-
+from sqlalchemy import func
+from bot.models.usermood import UserMood
+from bot.models.usermood import UserMood, get_weekly_average
+from bot.models.message import MessageHistory
 router = Router()
-
 class UserForm(StatesGroup):
     accept_intro = State()  # нажал "Привет👋🏻"
     accept_terms = State()  # нажал "Да✅"
@@ -87,6 +90,29 @@ async def intro_hello(callback: types.CallbackQuery, state: FSMContext):
 
 # ===========================
 # Обработка кнопки "Да✅"
+# ===========================
+@router.callback_query(lambda c: c.data.startswith("mood_"))
+async def mood_callback(callback: types.CallbackQuery):
+    await callback.answer("Сохраняем настроение...")
+    user_id = callback.from_user.id
+    mood_value = int(callback.data.split("_")[1])
+
+    # Проверка премиума
+    with Session(engine) as session:
+        user = session.exec(select(User).where(User.telegram_id == user_id)).first()
+        if not user or not user.is_premium:
+            await callback.message.answer("Эта функция доступна только для премиум пользователей 🌟")
+            return
+
+        # Сохраняем настроение
+        user_mood = UserMood(user_id=user_id, mood=mood_value)
+        session.add(user_mood)
+        session.commit()
+
+    await callback.message.answer(f"Спасибо! Твое настроение {mood_value} сохранено ✅")
+
+# ===========================
+# Обработка настроения"
 # ===========================
 @router.callback_query(lambda c: c.data == "accept_terms")
 async def accept_terms(callback: types.CallbackQuery, state: FSMContext):
@@ -189,8 +215,29 @@ async def end_dialog(message: types.Message):
     await message.answer("Диалог завершён. Что хочешь сделать дальше?", reply_markup=main_menu_keyboard())
 
 @router.message(lambda m: m.text == "📊 Метрики")
-async def metrics(message: types.Message):
-    await message.answer("📊 Здесь будут отображаться твои метрики и статистика (в разработке).")
+async def show_metrics(message: types.Message):
+    user_id = message.from_user.id
+    with Session(engine) as session:
+        user = session.exec(select(User).where(User.telegram_id == user_id)).first()
+        if not user or not user.is_premium:
+            await message.answer("Раздел Метрики доступен только для премиум пользователей 🌟")
+            return
+
+    # Среднее настроение
+    avg_mood = get_weekly_average(user_id)
+    avg_mood_text = f"{avg_mood:.2f}" if avg_mood else "Информация еще собирается"
+
+    # Количество сообщений
+    messages_count = session.exec(
+        select(func.count(MessageHistory.id)).where(MessageHistory.user_id == user_id)
+    ).one()
+
+
+    await message.answer(
+        f"📊 Твои метрики за неделю:\n"
+        f"• Среднее настроение: {avg_mood_text}\n"
+        f"• Количество сообщений: {messages_count}\n"
+    )
 
 @router.message(lambda m: m.text == "📜 Условия")
 async def conditions(message: types.Message):

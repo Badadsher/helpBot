@@ -8,6 +8,7 @@ from bot.config import settings
 from bot.db import engine
 from bot.handlers import start, chat  # импортируем оба роутера
 from bot.services.quote_scheduler import start_scheduler
+from bot.services.mood_scheduler import start_mood_scheduler
 from bot.services.user_memory import update_summary_if_needed, get_summary, get_recent_messages
 
 
@@ -26,8 +27,9 @@ async def main():
 
    
 
-    # 3️⃣ Запуск планировщика
+    # Запуск планировщиков
     start_scheduler(bot)
+    start_mood_scheduler(bot)
 
     print("🤖 Бот запущен и готов к работе")
     await dp.start_polling(bot)
