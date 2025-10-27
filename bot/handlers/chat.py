@@ -6,7 +6,8 @@ from bot.services.gpt_client import ask_gpt
 from bot.services.user_memory import add_recent_message, get_recent_messages, get_summary, update_summary_if_needed
 import asyncio
 import httpx
-
+from datetime import datetime
+from bot.models.message import MessageHistory
 router = Router()
 
 async def typing_answer(bot, chat_id, text, delay=1.5):
@@ -30,6 +31,16 @@ async def chat_with_gpt(message: types.Message):
     user_id = message.from_user.id
     user_text = message.text
 
+     # 🟢 Логируем сообщение пользователя
+    with Session(engine) as session:
+        msg = MessageHistory(
+            user_id=user_id,
+            role="user",
+            content=user_text,
+            created_at=datetime.utcnow()
+        )
+        session.add(msg)
+        session.commit()
     # Добавляем сообщение в буфер последних 50
     add_recent_message(user_id, user_text)
 
