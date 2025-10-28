@@ -11,6 +11,7 @@ from sqlalchemy import func
 from bot.models.usermood import UserMood
 from bot.models.usermood import UserMood, get_weekly_average
 from bot.models.message import MessageHistory
+from bot.models.message import MessageCounter
 import re
 
 router = Router()
@@ -240,14 +241,16 @@ async def show_metrics(message: types.Message):
     avg_mood_text = f"{avg_mood:.2f}" if avg_mood else "Информация еще собирается"
 
     # Количество сообщений
-    messages_count = session.exec(
-        select(func.count(MessageHistory.id)).where(MessageHistory.user_id == user_id)
-    ).one()
+    counter = session.exec(
+        select(MessageCounter).where(MessageCounter.user_id == user.id)
+    ).first()
+
+    messages_count = counter.total_messages if counter else 0
 
 
     await message.answer(
-        f"📊 Твои метрики за неделю:\n\n"
-        f"🎭 Среднее настроение: {avg_mood_text}\n"
+        f"📊 Твои метрики:\n\n"
+        f"🎭 Средний балл настроения за неделю: {avg_mood_text}\n"
         f"✉️ Количество сообщений: {messages_count}\n"
     )
 
@@ -321,11 +324,11 @@ async def premium(message: types.Message):
         "🚀 Высокая скорость работы\n\n"
         "Выбери срок подписки 👇"
     )
-
+    
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="1 месяц — 99₽", callback_data="buy_premium_1m")],
-        [types.InlineKeyboardButton(text="3 месяца — 990₽", callback_data="buy_premium_3m")],
-        [types.InlineKeyboardButton(text="12 месяцев — 4990₽", callback_data="buy_premium_12m")]
-    ])
+        [types.InlineKeyboardButton(text="🚀 1 месяц — 99₽ (скидка 17%)", callback_data="buy_premium_1m")],
+        [types.InlineKeyboardButton(text="💎 3 месяца — 280₽ (скидка 22%)", callback_data="buy_premium_3m")],
+        [types.InlineKeyboardButton(text="👑 12 месяцев — 1100₽ (скидка 39%)", callback_data="buy_premium_12m")]
+        ])
 
     await message.answer(text, parse_mode="Markdown", reply_markup=keyboard)

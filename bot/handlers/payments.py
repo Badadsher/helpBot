@@ -18,7 +18,7 @@ async def buy_premium(callback: types.CallbackQuery):
 
     plan_map = {
         "1m": {"days": 30, "price": 99_00, "title": "Премиум на 1 месяц"},
-        "3m": {"days": 90, "price": 990_00, "title": "Премиум на 3 месяца"},
+        "3m": {"days": 90, "price": 280_00, "title": "Премиум на 3 месяца"},
         "12m": {"days": 365, "price": 4990_00, "title": "Премиум на 12 месяцев"},
     }
 

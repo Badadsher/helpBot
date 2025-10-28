@@ -4,8 +4,13 @@ from bot.models.user import User
 from sqlmodel import SQLModel, create_engine, Session, select
 
 # Временно SQLite (можно потом сменить на PostgreSQL)
-DATABASE_URL = "sqlite:///helpbot.db"  # или PostgreSQL
-engine = create_engine(DATABASE_URL, echo=True)
+DATABASE_URL = "postgresql+psycopg2://helpbot_user:password123@localhost:5432/helpbot_db"
+engine = create_engine(
+    DATABASE_URL,
+    echo=True,
+    pool_size=10,
+    max_overflow=20
+)
 
 def get_session() -> Session:
     """Возвращает сессию SQLAlchemy, которую можно использовать с 'with'"""
