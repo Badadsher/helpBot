@@ -6,11 +6,11 @@ from sqlmodel import SQLModel
 
 from bot.config import settings
 from bot.db import engine
-from bot.handlers import start, chat  # импортируем оба роутера
+from bot.handlers import start, chat, payments   # импортируем оба роутера
 from bot.services.quote_scheduler import start_scheduler
 from bot.services.mood_scheduler import start_mood_scheduler
 from bot.services.user_memory import update_summary_if_needed, get_summary, get_recent_messages
-
+from bot.services.premium_checker import premium_checker
 
 
 async def main():
@@ -21,7 +21,7 @@ async def main():
     dp = Dispatcher()
     dp.include_router(start.router)
     dp.include_router(chat.router)
-
+    dp.include_router(payments.router)
     # 1️⃣ Создаём таблицы в базе до любых операций
     SQLModel.metadata.create_all(engine)
 
@@ -30,7 +30,7 @@ async def main():
     # Запуск планировщиков
     start_scheduler(bot)
     start_mood_scheduler(bot)
-
+    asyncio.create_task(premium_checker(bot))
     print("🤖 Бот запущен и готов к работе")
     await dp.start_polling(bot)
 

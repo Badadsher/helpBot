@@ -9,6 +9,6 @@ class User(SQLModel, table=True):
     gender: Optional[str] = None
     age: Optional[int] = None
     is_premium: bool = False
+    premium_until: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    summary: Optional[str] = ""  # <-- вот это поле для хранения истории пользователя
     is_active_dialog: bool = Field(default=False)

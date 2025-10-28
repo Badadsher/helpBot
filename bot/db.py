@@ -28,4 +28,5 @@ def init_db():
     """Создание всех таблиц"""
     from bot.models.user import User
     from bot.models.message import MessageHistory, UserSummary
+    from bot.models.payment import PaymentHistory
     SQLModel.metadata.create_all(engine)

@@ -6,7 +6,8 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
     yoomoney_wallet: str
-
+    provider_token: str
+    
     class Config:
         env_file = ".env"
 

@@ -11,6 +11,8 @@ from sqlalchemy import func
 from bot.models.usermood import UserMood
 from bot.models.usermood import UserMood, get_weekly_average
 from bot.models.message import MessageHistory
+import re
+
 router = Router()
 class UserForm(StatesGroup):
     accept_intro = State()  # нажал "Привет👋🏻"
@@ -83,6 +85,7 @@ async def intro_hello(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "Я здесь, чтобы обеспечить вам общение, пространство для выражения чувств, поддержку и помочь в поиске новых подходов к личным проблемам 🧠.\n\n"
         "Важное ограничение: Я не заменяю профессиональную помощь. Если ситуация серьезная, пожалуйста, обратитесь к специалисту 🩺.\n\n"
+        "Подробнее об условиях: https://telegra.ph/Usloviya-ispolzovaniya-Alisy-10-28\n\n"
         "Принимаете условия? Нажми 'Да' ✅.",
         reply_markup=keyboard
     )
@@ -130,8 +133,17 @@ async def accept_terms(callback: types.CallbackQuery, state: FSMContext):
 # ===========================
 @router.message(UserForm.name)
 async def process_name(message: types.Message, state: FSMContext):
-    await state.update_data(name=message.text)
+    name = message.text.strip()
+    
+    # Проверка длины и символов
+    if len(name) > 10 or not re.match(r"^[А-Яа-яЁёA-Za-z]+$", name):
+        await message.answer("Имя должно содержать только буквы и быть не длиннее 10 символов. Попробуй снова:")
+        return
 
+    # Сохраняем имя в состоянии
+    await state.update_data(name=name)
+
+    # Предлагаем выбрать пол
     keyboard = types.InlineKeyboardMarkup(
         inline_keyboard=[[types.InlineKeyboardButton(text="👨 Мужской", callback_data="gender_m"),
                           types.InlineKeyboardButton(text="👩 Женский", callback_data="gender_f")]]
@@ -241,7 +253,7 @@ async def show_metrics(message: types.Message):
 
 @router.message(lambda m: m.text == "📜 Условия")
 async def conditions(message: types.Message):
-    await message.answer("📜 Условия использования:\n1. Уважай других.\n2. Не отправляй спам.\n3. Соблюдай этику общения.")
+    await message.answer("📜 Для обеспечения безопасной и полезной среды, я придерживаюсь строгих правил.\n\nВ соответствии с ними, я не могу вести беседы на темы, связанные с наркотиками, оружием, а также с призывами к насилию или суициду. 🙅‍♂️\n\nМоя главная задача — быть для вас надёжным помощником и поддержкой! 🤝\n\nhttps://telegra.ph/Usloviya-ispolzovaniya-Alisy-10-28")
 
 @router.message(lambda m: m.text == "❓ Вопрос-ответ")
 async def faq(message: types.Message):
@@ -262,7 +274,7 @@ async def faq(message: types.Message):
         "Я здесь, чтобы помочь осознать корень проблем и подсказать пути их решения.\n\n"
         "— — —\n\n"
         "🔒 *Конфиденциальны ли наши сообщения?*\n\n"
-        "Да, абсолютно. Конфиденциальность — это главный принцип моей работы.\n"
+        "Да, абсолютно. Конфиденциальность - главный принцип моей работы.\n"
         "Вся переписка хранится только *в твоём аккаунте Telegram*, и никто, кроме тебя, не имеет к ней доступа.\n\n"
         "— — —\n\n"
         "🧠 *Могу ли я заменить психолога?*\n\n"
@@ -279,14 +291,41 @@ async def faq(message: types.Message):
         "— — —\n\n"
         "🛠️ *Куда обратиться по вопросам работы бота?*\n\n"
         "Если у тебя есть вопросы, предложения или ты столкнулся с ошибкой — напиши сюда:\n"
-        "👉 [@alicepszkhelp](https://t.me/alicepszkhelp)\n\n"
+        "👉 [@stradiesh](https://t.me/alicepszkhelp)\n\n"
         "— — —\n\n"
         "📌 *Как отменить подписку?*\n\n"
-        "Ты можешь отменить подписку *в любой момент*, нажав на кнопку «Отменить подписку» в разделе _Премиум_.\n"
+        "Подписка будет отключена сама после истечения срока до новой уплаты.\n"
         "Это быстро и просто 💫"
     )
     await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
 
+
 @router.message(lambda m: m.text == "💎 Премиум подписка")
 async def premium(message: types.Message):
-    await message.answer("💎 Премиум подписка откроет доступ к дополнительным возможностям (скоро).")
+    user_id = message.from_user.id
+
+    with Session(engine) as session:
+        user = session.exec(select(User).where(User.telegram_id == user_id)).first()
+
+        if user and user.is_premium and user.premium_until and user.premium_until > datetime.utcnow():
+            expire_date = user.premium_until.strftime("%d.%m.%Y")
+            await message.answer(f"💎 Премиум активирован до: *{expire_date}*", parse_mode="Markdown")
+            return
+
+    text = (
+        "💎 *Premium подписка* дает тебе:\n\n"
+        "✨ Безлимитные сообщения\n"
+        "🗣️ Мотивационные цитаты каждый день\n"
+        "🎭 Доступ к личной статистике метрик настроения\n"
+        "💡 Глубокий анализ проблемы\n"
+        "🚀 Высокая скорость работы\n\n"
+        "Выбери срок подписки 👇"
+    )
+
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="1 месяц — 99₽", callback_data="buy_premium_1m")],
+        [types.InlineKeyboardButton(text="3 месяца — 990₽", callback_data="buy_premium_3m")],
+        [types.InlineKeyboardButton(text="12 месяцев — 4990₽", callback_data="buy_premium_12m")]
+    ])
+
+    await message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
