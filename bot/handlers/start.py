@@ -1,17 +1,20 @@
 from aiogram import Router, types
 from aiogram.filters import Command
+from aiogram.types import FSInputFile, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlmodel import select, Session
 from bot.models.user import User
 from bot.db import engine
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 from sqlalchemy import func
 from bot.models.usermood import UserMood
 from bot.models.usermood import UserMood, get_weekly_average
 from bot.models.message import MessageHistory
 from bot.models.message import MessageCounter
+import io
+import matplotlib.pyplot as plt
 import re
 
 router = Router()
@@ -236,23 +239,57 @@ async def show_metrics(message: types.Message):
             await message.answer("Раздел Метрики доступен только для премиум пользователей 🌟")
             return
 
-    # Среднее настроение
-    avg_mood = get_weekly_average(user_id)
-    avg_mood_text = f"{avg_mood:.2f}" if avg_mood else "Информация еще собирается"
+        # Среднее настроение
+        avg_mood = get_weekly_average(user_id)
+        avg_mood_text = f"{avg_mood:.2f}" if avg_mood else "Информация еще собирается"
 
-    # Количество сообщений
-    counter = session.exec(
-        select(MessageCounter).where(MessageCounter.user_id == user.id)
-    ).first()
+        # Количество сообщений
+        counter = session.exec(
+            select(MessageCounter).where(MessageCounter.user_id == user.id)
+        ).first()
+        messages_count = counter.total_messages if counter else 0
 
-    messages_count = counter.total_messages if counter else 0
+        # ======================
+        #  График настроения
+        # ======================
+        week_ago = datetime.utcnow() - timedelta(days=7)
+        moods = session.exec(
+            select(UserMood)
+            .where(UserMood.user_id == user_id)
+            .where(UserMood.created_at >= week_ago)
+            .order_by(UserMood.created_at)
+        ).all()
 
+        if moods:
+            dates = [m.created_at.strftime("%d.%m") for m in moods]
+            values = [m.mood for m in moods]
 
-    await message.answer(
-        f"📊 Твои метрики:\n\n"
-        f"🎭 Средний балл настроения за неделю: {avg_mood_text}\n"
-        f"✉️ Количество сообщений: {messages_count}\n"
-    )
+            plt.figure(figsize=(6, 3))
+            plt.plot(dates, values, marker='o', linestyle='-', linewidth=2)
+            plt.title("Изменение настроения за неделю", fontsize=10)
+            plt.xlabel("Дата")
+            plt.ylabel("Настроение (1–5)")
+            plt.ylim(1, 5)
+            plt.grid(True, linestyle='--', alpha=0.5)
+            plt.tight_layout()
+
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png')
+            buf.seek(0)
+            photo = BufferedInputFile(buf.getvalue(), filename="mood_graph.png")
+
+            await message.answer_photo(photo, caption="📈 Динамика твоего настроения за неделю")
+        else:
+            await message.answer("📈 Пока недостаточно данных, чтобы построить график настроения.")
+
+        # ======================
+        #  Текстовая часть
+        # ======================
+        await message.answer(
+            f"📊 Твои метрики:\n\n"
+            f"🎭 Средний балл настроения за неделю: {avg_mood_text}\n"
+            f"✉️ Количество сообщений: {messages_count}\n"
+        )
 
 @router.message(lambda m: m.text == "📜 Условия")
 async def conditions(message: types.Message):
