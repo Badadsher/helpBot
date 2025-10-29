@@ -13,8 +13,12 @@ from bot.models.usermood import UserMood
 from bot.models.usermood import UserMood, get_weekly_average
 from bot.models.message import MessageHistory
 from bot.models.message import MessageCounter
+from bot.models.psychotype import UserPsychotype
+from bot.models.weekly_report import WeeklyReport
+from bot.services.analyze_user import analyze_user_profile
 import io
-import matplotlib.pyplot as plt
+from bot.models.payment import PaymentHistory
+import plotly.graph_objects as go
 import re
 
 router = Router()
@@ -30,7 +34,7 @@ def main_menu_keyboard() -> types.ReplyKeyboardMarkup:
     return types.ReplyKeyboardMarkup(
         keyboard=[
             [types.KeyboardButton(text="🗣 Начать диалог")],
-            [types.KeyboardButton(text="📊 Метрики"), types.KeyboardButton(text="📜 Условия")],
+            [types.KeyboardButton(text="📊 Мой анализ"), types.KeyboardButton(text="📜 Условия")],
             [types.KeyboardButton(text="❓ Вопрос-ответ"), types.KeyboardButton(text="💎 Премиум подписка")]
         ],
         resize_keyboard=True
@@ -66,15 +70,28 @@ async def start_cmd(message: types.Message, state: FSMContext):
     keyboard = types.InlineKeyboardMarkup(
         inline_keyboard=[[types.InlineKeyboardButton(text="Привет👋🏻", callback_data="intro_hello")]]
     )
-    await message.answer(
-        "Привет! ✨ Я Алиса — ваш личный бот эмоциональной поддержки. Я на связи в любое время и всегда готова помочь! 🤝\n\n"
+
+    photo_path_hello = "bot/assets/hello_photo.png"  # путь к твоему файлу в проекте
+    photo_hello = FSInputFile(photo_path_hello)
+
+
+    text_hello = (
+        "Привет! ✨ Я Алиса — ваш личный бот эмоциональной поддержки. "
+        "Я на связи в любое время и всегда готова помочь! 🤝\n\n"
         "Обо мне:\n"
         "• Конфиденциально и безопасно 🛡️\n"
         "• Мгновенный ответ ⚡\n"
         "• Личный виртуальный собеседник 💬\n"
-        "• На связи 24/7 ⏰",
-        reply_markup=keyboard
+        "• Запоминание диалогов и анализ собеседника 🔎\n"
+        "• На связи 24/7 ⏰"
     )
+
+    await message.answer_photo(
+        photo=photo_hello,
+        caption=text_hello,
+        reply_markup=keyboard  # твои кнопки
+    )
+
     await state.set_state(UserForm.accept_intro)
 
 # ===========================
@@ -83,10 +100,17 @@ async def start_cmd(message: types.Message, state: FSMContext):
 @router.callback_query(lambda c: c.data == "intro_hello")
 async def intro_hello(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
+
+    try:
+        await callback.message.delete()
+    except:
+        pass
+
     keyboard = types.InlineKeyboardMarkup(
         inline_keyboard=[[types.InlineKeyboardButton(text="Да✅", callback_data="accept_terms")]]
     )
-    await callback.message.edit_text(
+
+    await callback.message.answer(
         "Я здесь, чтобы обеспечить вам общение, пространство для выражения чувств, поддержку и помочь в поиске новых подходов к личным проблемам 🧠.\n\n"
         "Важное ограничение: Я не заменяю профессиональную помощь. Если ситуация серьезная, пожалуйста, обратитесь к специалисту 🩺.\n\n"
         "Подробнее об условиях: https://telegra.ph/Usloviya-ispolzovaniya-Alisy-10-28\n\n"
@@ -230,7 +254,7 @@ async def end_dialog(message: types.Message):
 
     await message.answer("Диалог завершён. Что хочешь сделать дальше?", reply_markup=main_menu_keyboard())
 
-@router.message(lambda m: m.text == "📊 Метрики")
+@router.message(lambda m: m.text == "📊 Мой анализ")
 async def show_metrics(message: types.Message):
     user_id = message.from_user.id
     with Session(engine) as session:
@@ -244,14 +268,15 @@ async def show_metrics(message: types.Message):
         avg_mood_text = f"{avg_mood:.2f}" if avg_mood else "Информация еще собирается"
 
         # Количество сообщений
-        counter = session.exec(
-            select(MessageCounter).where(MessageCounter.user_id == user.id)
-        ).first()
+        counter = session.exec(select(MessageCounter).where(MessageCounter.user_id == user.id)).first()
         messages_count = counter.total_messages if counter else 0
 
-        # ======================
-        #  График настроения
-        # ======================
+        # Психотип и недельный отчёт
+        result = await analyze_user_profile(user.id)
+        psychotype_text = result["psychotype"]
+        weekly_report_text = result["weekly_report"]
+
+        # Получаем последние 7 дней настроения
         week_ago = datetime.utcnow() - timedelta(days=7)
         moods = session.exec(
             select(UserMood)
@@ -260,36 +285,49 @@ async def show_metrics(message: types.Message):
             .order_by(UserMood.created_at)
         ).all()
 
+        # Формируем текст метрик
+        metrics_text = (
+            f"📊 Твои метрики:\n\n"
+            f"🎭 Средний балл настроения за неделю: {avg_mood_text}\n"
+            f"✉️ Количество сообщений: {messages_count}\n"
+            f"🧠 Психотип: *{psychotype_text}*\n"
+            f"🪞 Отчёт за неделю: {weekly_report_text}"
+        )
+
         if moods:
             dates = [m.created_at.strftime("%d.%m") for m in moods]
             values = [m.mood for m in moods]
 
-            plt.figure(figsize=(6, 3))
-            plt.plot(dates, values, marker='o', linestyle='-', linewidth=2)
-            plt.title("Изменение настроения за неделю", fontsize=10)
-            plt.xlabel("Дата")
-            plt.ylabel("Настроение (1–5)")
-            plt.ylim(1, 5)
-            plt.grid(True, linestyle='--', alpha=0.5)
-            plt.tight_layout()
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=dates,
+                y=values,
+                mode='lines+markers',
+                line=dict(color='#6C63FF', width=3),
+                marker=dict(size=8, color='#FF6F61', line=dict(width=1, color='#fff')),
+                fill='tozeroy',
+                fillcolor='rgba(108,99,255,0.1)',
+                name='Настроение'
+            ))
+            fig.update_layout(
+                title='📈 Динамика настроения за неделю',
+                xaxis_title='Дата',
+                yaxis_title='Настроение (1–5)',
+                yaxis=dict(range=[1, 5]),
+                template='plotly_white',
+                font=dict(size=12),
+                height=350,
+                margin=dict(l=30, r=30, t=60, b=30)
+            )
 
             buf = io.BytesIO()
-            plt.savefig(buf, format='png')
+            fig.write_image(buf, format="png")
             buf.seek(0)
             photo = BufferedInputFile(buf.getvalue(), filename="mood_graph.png")
 
-            await message.answer_photo(photo, caption="📈 Динамика твоего настроения за неделю")
+            await message.answer_photo(photo, caption=metrics_text, parse_mode="Markdown")
         else:
-            await message.answer("📈 Пока недостаточно данных, чтобы построить график настроения.")
-
-        # ======================
-        #  Текстовая часть
-        # ======================
-        await message.answer(
-            f"📊 Твои метрики:\n\n"
-            f"🎭 Средний балл настроения за неделю: {avg_mood_text}\n"
-            f"✉️ Количество сообщений: {messages_count}\n"
-        )
+            await message.answer(metrics_text, parse_mode="Markdown")
 
 @router.message(lambda m: m.text == "📜 Условия")
 async def conditions(message: types.Message):
@@ -331,7 +369,7 @@ async def faq(message: types.Message):
         "— — —\n\n"
         "🛠️ *Куда обратиться по вопросам работы бота?*\n\n"
         "Если у тебя есть вопросы, предложения или ты столкнулся с ошибкой — напиши сюда:\n"
-        "👉 [@stradiesh](https://t.me/alicepszkhelp)\n\n"
+        "👉 [@stradiesh]\n\n"
         "— — —\n\n"
         "📌 *Как отменить подписку?*\n\n"
         "Подписка будет отключена сама после истечения срока до новой уплаты.\n"
@@ -352,20 +390,55 @@ async def premium(message: types.Message):
             await message.answer(f"💎 Премиум активирован до: *{expire_date}*", parse_mode="Markdown")
             return
 
+        first_plan_purchased = session.exec(
+            select(PaymentHistory)
+            .where(PaymentHistory.user_id == user.id)
+            .where(PaymentHistory.plan == "1m")
+        ).first()
+
+
+        buttons = []
+        if not first_plan_purchased:
+            buttons.append([types.InlineKeyboardButton(
+                text="🚀 1 месяц — 99₽ (Только для новичков)",
+                callback_data="buy_premium_1m"
+                )])
+        else:
+            buttons.append([types.InlineKeyboardButton(
+                text="🚀 1 месяц — 320₽",
+                callback_data="buy_premium_1m_old"
+                )])
+        buttons.append([types.InlineKeyboardButton(
+            text="💎 3 месяца — 950₽ (скидка 22%)",
+            callback_data="buy_premium_3m"
+        )])
+        buttons.append([types.InlineKeyboardButton(
+            text="👑 12 месяцев — 3700₽ (скидка 39%)",
+            callback_data="buy_premium_12m"
+        )])
+
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
     text = (
         "💎 *Premium подписка* дает тебе:\n\n"
         "✨ Безлимитные сообщения\n"
         "🗣️ Мотивационные цитаты каждый день\n"
-        "🎭 Доступ к личной статистике метрик настроения\n"
+        "🎭 Доступ к личной статистике и анализу\n"
         "💡 Глубокий анализ проблемы\n"
         "🚀 Высокая скорость работы\n\n"
         "Выбери срок подписки 👇"
     )
     
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="🚀 1 месяц — 99₽ (скидка 17%)", callback_data="buy_premium_1m")],
-        [types.InlineKeyboardButton(text="💎 3 месяца — 280₽ (скидка 22%)", callback_data="buy_premium_3m")],
-        [types.InlineKeyboardButton(text="👑 12 месяцев — 1100₽ (скидка 39%)", callback_data="buy_premium_12m")]
-        ])
+  
 
-    await message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
+    photo_path = "bot/assets/premium.png"  # путь к твоему файлу в проекте
+    photo = FSInputFile(photo_path)
+
+    # Отправляем фото с подписью и кнопками
+    await message.answer_photo(
+        photo=photo,
+        caption=text,
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )

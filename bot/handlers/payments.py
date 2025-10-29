@@ -14,12 +14,13 @@ router = Router()
 @router.callback_query(lambda c: c.data.startswith("buy_premium_"))
 async def buy_premium(callback: types.CallbackQuery):
     await callback.answer()  # убираем "крутилку" у кнопки
-    plan = callback.data.split("_")[2]  # 1m / 3m / 12m
+    plan = callback.data[len("buy_premium_"):]  # 1m / 3m / 12m
 
     plan_map = {
         "1m": {"days": 30, "price": 99_00, "title": "Премиум на 1 месяц"},
-        "3m": {"days": 90, "price": 280_00, "title": "Премиум на 3 месяца"},
-        "12m": {"days": 365, "price": 4990_00, "title": "Премиум на 12 месяцев"},
+        "1m_old": {"days": 30, "price": 320_00, "title": "Премиум на 1 месяц"},
+        "3m": {"days": 90, "price": 900_00, "title": "Премиум на 3 месяца"},
+        "12m": {"days": 365, "price": 3500_00, "title": "Премиум на 12 месяцев"},
     }
 
     info = plan_map.get(plan)
@@ -90,6 +91,7 @@ async def successful_payment(message: types.Message):
             amount=payment.total_amount / 100,  # в рублях
             currency=payment.currency,
             duration_days=days,
+            plan=plan,
             created_at=datetime.utcnow()
         )
         session.add(payment_record)

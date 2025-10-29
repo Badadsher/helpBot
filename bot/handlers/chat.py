@@ -23,15 +23,25 @@ async def chat_with_gpt(message: types.Message):
     telegram_id = message.from_user.id
     user_text = message.text
 
+
     with Session(engine) as session:
         user = session.exec(select(User).where(User.telegram_id == telegram_id)).first()
-        if not user or not user.is_active_dialog:
+
+        # ⛔ Если пользователя нет в базе — он не зарегистрирован
+        if not user:
+            await message.answer(
+                "Чтобы начать, нажми кнопку 👋 **Привет** и пройди короткую регистрацию 🪄",
+                parse_mode="Markdown"
+            )
+            return
+
+        # ⛔ Если зарегистрирован, но диалог не активен
+        if not user.is_active_dialog:
             await message.answer(
                 "Чтобы начать общение, нажми кнопку 🗣 **Начать диалог** ниже 👇",
                 parse_mode="Markdown"
             )
             return
-
         user_id = user.id  # Используем внутренний ID
 
         # Проверка лимита сообщений для free-пользователей

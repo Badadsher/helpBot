@@ -8,3 +8,4 @@ class PaymentHistory(SQLModel, table=True):
     currency: str
     duration_days: int
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    plan: str | None = Field(default=None)

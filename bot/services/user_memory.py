@@ -10,7 +10,7 @@ user_recent_messages = {}
 user_message_counter = {}
 
 SUMMARY_BATCH = 3
-MAX_MESSAGES = 15
+MAX_MESSAGES = 25
 TRIM_MESSAGES = 10
 
 def add_recent_message(user_id: int, message: str):
